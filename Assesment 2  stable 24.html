@@ -1,0 +1,562 @@
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Manchester Pollution Routing</title>
+				
+		<!-- Load CSS for Leaflet -->
+		<link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css"/>
+		
+		<!-- Load JavaScript for Leaflet -->
+		<script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
+		
+		<!-- Load Proj4js -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.5.0/proj4.js"></script>
+		
+		<!-- Load Turf.js -->
+		<script src="https://cdn.jsdelivr.net/npm/@turf/turf@5/turf.min.js"></script>		
+		
+		<!-- Load manchester road network geojson -->
+		<script src = "circle_json2.geojson"></script>
+		
+		<!-- Load manchester road node geojson -->
+		<script src = "manchester_nodes.geojson"></script>
+		
+		<!-- Load pollution pollygons -->
+		<script src = "80thPercentilePollution.geojson"></script>
+		<script src = "60thPercentilePollution.geojson"></script>
+		
+		<!-- Load Polygon within plugin for leaflet -->
+		<script src = "https://unpkg.com/@mapbox/leaflet-pip@latest/leaflet-pip.js"></script>
+
+
+		<style>
+		
+			/* This is where we can set dimensions of the web page */
+			html, body {
+				padding: 0;
+				margin: 0;
+				width: 100%;
+				height: 100%;
+			}
+			
+			/* set consistent size for entire division */
+			#entire {
+				padding-top: 30px;
+				padding-bottom: 30px;
+				max-width: 1000px;
+				min-height: auto;
+				margin-left: auto;
+				margin-right: auto;
+				/*border-radius: 10px;*/
+				background: #EEEEEE
+			}
+			
+			/* Style of the web page */
+			html, body {
+				padding: 0;
+				margin: 0;
+				width: 100%;
+				height: 100%;
+				background: #692D91
+			}
+			
+			
+			
+			
+			/* Style for intro text */
+			#introtext {
+				margin-top; 20px;
+				margin-left: auto;
+				margin-right: auto;
+				margin-bottom: 5px;
+				width: 910px;
+				padding: 20px;
+				background; #FFFFFF;
+				border-style: solid;
+				border-color: #692D91;
+				border-width: 2px;
+				border-radius: 4px;
+				font-family: Helvetica;
+				font-size: 11pt;
+
+			}
+			
+			/* style of map */
+			#map {
+				width: 95%;
+				height: 400px;
+				margin-left: auto;
+				margin-right: auto;	
+				margin-top: 35px;
+				margin-bottom: 30px;
+				border-style: solid;
+				border-color: #CECDD2;
+				border-width: 2px;
+			}
+			
+			.color-box {
+				
+				float: left;
+				margin: 2px;
+				margin-left: 8px;
+				width: 10px;
+				height: 10px;
+				background-color: #ccc;
+				left: 5px;
+				top: 5px;
+			}
+			
+			
+			.loader {
+				border: 2px solid #EEEEEE; /* Light grey */
+				border-top: 2px solid #692D91; /* Manchester purple */
+				border-radius: 50%;
+				width: 20px;
+				height: 20px;
+				animation: spin 2s linear infinite;
+				margin-bottom: 30px;
+			}
+
+			@keyframes spin {
+				0% { transform: rotate(0deg); }
+				100% { transform: rotate(360deg); }
+			}
+			
+			#tempLoader {
+				width: 10px;
+				length: 10px;
+				margin-right: auto;
+				margin-left: auto;
+				float: bottom;
+				position: absolute;
+				right: 674.5px;
+			}
+			
+		</style>
+		
+	</head>
+	<body>
+		<div id='entire'>
+								
+			<!-- Intro text-->
+			<div id='introtext'>
+				<b>Manchester Pollution Avoidance Routing</b>
+				<p>The map below calculates an optimal route between two locations that avoids areas within Manchester with the greatest amounts of pollution.</p>
+				<p>Please note that this is a prototype and is therefore susceptible to bugs and crashes.</p>
+				
+				<p>Index:</p>
+				<div>- Top 60th percentile of pollution <div class="color-box" style="background-color: #ffc299;"></div></div>
+				
+				<div>- Top 80th percentile of pollution <div class="color-box" style="background-color: #cc99ff;"></div></div>
+				
+
+			</div>
+			
+			 <div id='tempLoader'></div>
+			
+			<!-- Make a division to put the map in -->
+			<div id= 'map'></div>
+			
+			
+			<div id='introtext'>
+				Right click <img src="https://img.icons8.com/metro/10/000000/mouse-right-click.png"> on the map to add your starting position. Right click <img src="https://img.icons8.com/metro/10/000000/mouse-right-click.png"> again to add your destination. When finished with your selection <button onclick="firstNode(); runAlert(); run()">click here</button>  to calculate the route.
+									
+
+			</div>
+			
+		</div>
+		
+		
+
+		
+		<!-- Javascript below -->
+		<script>
+
+			// LOADS BASIC MAP
+			// this is a variable that holds the coordinates for our map and marker
+			
+			bounds = new L.LatLngBounds(new L.LatLng(53.51193883473109, -2.313480377197266), new L.LatLng(53.42344589301858, -2.1687698364257817)); // Within which tiles should load
+			scrollBounds = new L.LatLngBounds(new L.LatLng(53.60248837670725, -2.659549713134766), new L.LatLng(53.313441876559224, -1.8005561828613283)); // where the limits of the scrolling of the map should be
+			
+			var map = L.map('map', {maxBounds: scrollBounds}); // Creates the leaflet map, restricts scrolling to relevent site (city scale)
+			
+			var mapCentre = [53.464903718774146, -2.2311101915731246]; // coordinates of the University
+						
+			map.setView(mapCentre, 15); // set the map to use the above coordinates, and to zoom level
+
+			var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', 
+			noWrap: true, minZoom: 12, bounds: bounds}); //Disables repeating map, doesnt allow user to zoom out too far, only draws tiles within the bounds
+
+			tiles.addTo(map); //add the tiles to the map
+
+
+			
+						// GLOBAL VARIABLES FOR ROUTING
+			var nCounter = 1; // counter for naming neighbour features
+			var last; // names the node previous to the current node along the route
+			var nList = []; // array of neighbouring nodes along route
+			var searched = []; // list of nodes that have been checked
+			var checkedCo = []; // list of the coordinates of nodes that have been checked
+			var neighbourList = {}; // an object that will contain all of the neighbouring nodes to the route that have not yet been checked
+			var multi; // a value that is multiplied with the current node g score to weight the cost of paths based on different pollution levels
+			var yesRoute = false; // Toggle variable for if function (is there a route already on the map?)
+			var routeLine; // The polyline when the route is plotted
+			var checkSMarker = false; // Toggle variable for if function (is the start marker on the map?)
+			var checkEMarker = false; // Toggle variable for if function (is the end marker on the map?)
+			var sMarker; // The end marker (created on 1st right click)
+			var eMarker; // The end marker (created on 2nd right click)
+			var jsonCRS = '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +datum=OSGB36 +units=m +no_defs'; //National grid reference system
+			var projectedStart;  // Start marker coordinates after conversion through Proj4s
+			var projectedEnd; // End marker coordinates after conversion through Proj4s
+			var previous; // the last selected node
+				
+				
+			// CREATE 80th PERCENTILE POLLUTION POLYGON
+			for(var a = 0; a < eight_PercentilePollution.features.length; a++){
+				for(var i = 0; i < eight_PercentilePollution.features[a].geometry.coordinates[0][0].length; i++){
+					eight_PercentilePollution.features[a].geometry.coordinates[0][0][i].reverse // Reverse the coordinates of each feature for turf
+				};
+			};
+
+			var eightPer = new L.GeoJSON(eight_PercentilePollution).addTo(map); // creates new polygon
+			eightPer.setStyle({fillColor: ' #800000', color: 'white'}); // stye the polygon
+
+			
+			
+			// CREATE 60th PERCENTILE POLLUTION POLYGON
+			for(var a = 0; a < six_PercentilePollution.features.length; a++){
+				for(var i = 0; i < six_PercentilePollution.features[a].geometry.coordinates[0][0].length; i++){
+					six_PercentilePollution.features[a].geometry.coordinates[0][0][i].reverse // Reverse the coordinates of each feature for turf
+				};
+			};
+				
+			var sixPer = new L.GeoJSON(six_PercentilePollution).addTo(map); // creates new polygon
+			sixPer.setStyle({fillColor: '#ff6600', color: 'white'}); // stye the polygon			
+			
+			
+			
+			// MAKE ALL MANCHESTER NETWORK COORDINATES STRINGS FOR SEARCH
+			
+			/* To work with the 'includes' functions that will be used to cross reference coordinates between features in the GEOjson they must be 
+			put into a precise string format. Below is that proccess */
+			
+			for(var i = 0; i < manNet.features.length; i++){
+			
+				for(var a = 0; a < manNet.features[i].geometry.coordinates[0].length; a++){
+
+					var cleanX = JSON.stringify(manNet.features[i].geometry.coordinates[0][a][0]) // stringifies the x coordinate of each coordinate array of that feature
+					if (!cleanX.includes('.')) {
+						cleanX = cleanX + '.0'; // if the x coordinate string does not contain a decimal append '.0' to it
+					};
+													
+					var cleanY = JSON.stringify(manNet.features[i].geometry.coordinates[0][a][1]) // stringifies the y coordinate of each coordinate array of that feature
+					if (!cleanY.includes('.')) {
+						cleanY = cleanY + '.0'; // if the y coordinate string does not contain a decimal append '.0' to it
+					};
+													
+					manNet.features[i].geometry.coordinates[0][a] = "[" + cleanX + ',' + cleanY + "]"; // replace co-ordinates of the json road network file with the stringified and ammended coordinates
+				};
+			};
+			
+
+				
+			// MAKE TURF FEATURE COLLECTION OF ALL NODES
+			var allNodes = [];
+
+			for(var i = 0; i < manNodes.features.length; i++){
+				var nodeCo = turf.point(manNodes.features[i].geometry.coordinates[0].reverse()); // reverse each coordinate for turf
+				allNodes.push(nodeCo); // add reversed coordinates to allNodes array
+			};
+				
+			var allNodes = turf.featureCollection(allNodes); // Add the reversed nodes to a turf feature collection	to be used with 'nearest to' function
+				
+				
+				
+			// SNAP MARKER TO NODE ON RIGHT CLICK
+			var lat, lng; // for position of mouse
+			var change = true //Toggle variable for if function (should the end marker be added or should the start marker be added?)
+
+			map.addEventListener('mousemove', function(ev) { // track coordinate position of the mouse on the map
+			   lat = ev.latlng.lat;
+			   lng = ev.latlng.lng;
+			});
+
+			// RIGHT CLICK EVENT
+			document.getElementById("map").addEventListener("contextmenu", function (event) { // replace the maps right click event
+				event.preventDefault(); // Prevent the browser's context menu from appearing
+
+
+				if (change) { // if this is the first time of right click or if the end marker is on the map
+				
+					
+					if (checkSMarker) { // if there is already a start marker on the map
+						map.removeLayer(sMarker); // remove the start marker
+					};
+					
+					if (yesRoute) { // if there is a plotted route on the map
+						map.removeLayer(routeLine); // remove plotted route
+					};
+
+					
+					var target = [lat, lng] // add mouse coordinates to an array
+					//alert(lat + ' - ' + lng); // optional alert for debugging
+						
+					var begin = turf.nearestPoint(target, allNodes); // finds the closest node in the road network to where the mouse was clicked (any intersection of roads)
+						
+					sMarker = L.marker(begin.geometry.coordinates).addTo(map); // creates the start marker on the nearest node (snaps to the road)
+					
+					/* To work with the 'includes' functions that will be used to cross reference coordinates between features in the GEOjson they must be 
+					put into a precise string format. Below is that proccess */
+					strt = proj4('EPSG:4326', jsonCRS, begin.geometry.coordinates.reverse()) // change CRS so leaflet can display the data
+										
+					
+					strt[0] = strt[0].toFixed(2) // round the x coordinates to 2 decimal places
+					
+					// Numbers in the json file such as '23.20' are simplified to '23.2', the coordinates below must match this format
+					if (strt[0][strt[0].length-1] == '0') {	// if last digit is 0	
+						strt[0] = strt[0].substr(0, strt[0].length-1); //remove the 0 (effectively making it 1 decimal point)
+					};
+					
+					
+					strt[1] = strt[1].toFixed(2) // round the y coordinates to 2 decimal places
+					
+					if (strt[1][strt[1].length-1] == '0') {	// if last digit is 0		
+						strt[1] = strt[1].substr(0, strt[1].length-1); // remove the 0 (effectively making it 1 decimal point)
+					};
+					
+					strt = strt.toString(); // make coordinates a string
+					searchFor = "[" + strt + "]"; // append brackets to coordinate string (this variable will be cross referenced against other coordinates in the network json file)
+					
+					projectedStart = proj4(jsonCRS,'EPSG:4326',JSON.parse(searchFor)); 
+					projectedStart = projectedStart.reverse(); // coordinates of the first node in the correct format and order
+						
+					change = false; // toggle
+					checkSMarker = true; // toggle
+				}
+				
+					
+				
+				else {
+				
+				
+					if (checkEMarker) {
+						map.removeLayer(eMarker);
+					};
+					
+					if (yesRoute) {
+						map.removeLayer(routeLine);
+					};
+				
+					var target = [lat, lng]
+					
+					//alert(lat + ' - ' + lng); // optional alert for debugging
+					
+					var finish = turf.nearestPoint(target, allNodes);
+						
+					eMarker = L.marker(finish.geometry.coordinates).addTo(map);
+					
+					projectedEnd = [...finish.geometry.coordinates]; // correct up to // projected end not accounting for 0 dropping etc.
+					
+					// is there something being lost in the CRS conversion?
+					
+					//projectedEnd = projectedEnd.reverse();
+					console.log('Projected end @ start = ' +projectedEnd);
+					
+					
+					end = proj4('EPSG:4326', jsonCRS, [...finish.geometry.coordinates].reverse())
+					
+					end[0] = end[0].toFixed(2)
+					
+					if (end[0][end[0].length-1] == '0') {					
+						end[0] = end[0].substr(0, end[0].length-1);
+					};
+					
+					
+					end[1] = end[1].toFixed(2)
+					
+					if (end[1][end[1].length-1] == '0') {					
+						end[1] = end[1].substr(0, end[1].length-1);				
+					};						
+					
+					
+					end = end.toString();
+					
+					absEnd = '[' + end + ']'
+					//console.log(end);
+					//absEnd = end.replace(',', ', ');
+					console.log('absEnd @ start = ' +absEnd);					
+				
+					change = true;
+					checkEMarker = true;				
+				};
+				
+				return false; // To disable default popup.
+			});
+
+
+
+			// SET FIRST NODE
+			
+			function firstNode() {
+				document.getElementById("tempLoader").innerHTML = "<div class='loader'></div>";
+
+				var startF = turf.distance(projectedStart, projectedEnd, {units: 'miles'}); // calculate fscore for the start node					
+				neighbourList['neighbour0'] = {'coordinate': searchFor, 'gScore': 0, 'fScore': startF, 'previous': []}; //adds start to neighbourList, initiates gscore
+				searched.push(neighbourList.neighbour0); //adds start node to 'searched' array
+				checkedCo.push(neighbourList.neighbour0.coordinate); // add first node coordinates to checked coordinates
+				previous = neighbourList.neighbour0; //set first node as the previous node for the next node calculation
+			};
+				
+			
+			
+			// ROUTING ALGORYTHM
+			function run() {	
+								
+				var t0 = performance.now(); // start time
+				for(var i = 0; i < manNet.features.length; i++){ // loop through json features
+					var selected = []; // empty the array after each json feature
+					manNet.features[i].geometry.coordinates[0].forEach(function(element) {						
+						selected.push (element);
+					});						
+						
+
+					if (selected.includes(searchFor)) { // if the co-ordinate being searched for is found in 'selected' (the string of co-ordinates)
+						var coPos = null
+						coPos = selected.indexOf(searchFor); // position of coordinates in array
+								
+						var lastG = previous.gScore; // g score of previous node on route
+								
+						var projectedLastCo = JSON.parse(previous.coordinate); // coordinate of previous node on route
+						projectedLastCo = proj4(jsonCRS,'EPSG:4326',projectedLastCo);
+						projectedLastCo = projectedLastCo.reverse();
+																	
+						if (checkedCo.includes(selected[coPos -1])) {
+						}
+						else if (coPos != 0) { // Dont do following if co-ordinates in first position of array (there is no co-ordinate to the left)
+							var nodeL = selected[coPos -1]; // object left of coordinate (adjacent node)
+							var projectedL = proj4(jsonCRS,'EPSG:4326',JSON.parse(nodeL))			
+
+
+							var resultsE = leafletPip.pointInLayer(projectedL, eightPer);
+							var resultsS = leafletPip.pointInLayer(projectedL, sixPer);
+
+							if (typeof resultsS != "undefined" && resultsS != null && resultsS.length != null && resultsS.length > 0) {
+							console.log('six');
+							multi = 1.2;
+							}
+							else if (typeof resultsE != "undefined" && resultsE != null && resultsE.length != null && resultsE.length > 0) {
+							console.log('eight');
+							multi = 1.8;
+							}
+							else {
+							multi = 0.1;
+							};					
+							
+							projectedL = projectedL.reverse();
+							var GL = turf.distance(projectedL, projectedLastCo, {units: 'miles'})* multi;; // Calculates the g for this node
+							var thisGL = lastG + GL;
+							console.log('projectedEnd @ create = '+projectedEnd);
+							var thisF = thisGL + turf.distance(projectedL, projectedEnd, {units: 'miles'})*1.2; // Calculates the f for this node (A multiplier is applied to the heuristic here. This technically allows for sub-optimal paths but allows a significantly reduced load time)
+							neighbourList['neighbour' + nCounter] = {'coordinate': nodeL, 'gScore': thisGL, 'fScore': thisF, 'previous': [...previous.previous]}; //uniquely name this neighbour feature and add data
+							neighbourList['neighbour' + nCounter].previous.push(projectedL);
+							nList.push(neighbourList['neighbour' + nCounter]) // add node object to an array
+							nCounter++; // increase naming convention by 1				
+						};
+								
+						if (checkedCo.includes(selected[coPos +1])) {
+						}
+						else if (coPos != selected.length-1) { // Dont do following if co-ordinates in last position of array (there is no co-ordinate to the right)
+							var nodeR = selected[coPos +1]; // object right of coordinate (adjacent node)
+							var projectedR = proj4(jsonCRS,'EPSG:4326',JSON.parse(nodeR))
+							
+							var resultsE = leafletPip.pointInLayer(projectedR, eightPer);
+							var resultsS = leafletPip.pointInLayer(projectedR, sixPer);
+
+							if (typeof resultsS != "undefined" && resultsS != null && resultsS.length != null && resultsS.length > 0) {
+							console.log('six');
+							multi = 1.2;
+							}
+							else if (typeof resultsE != "undefined" && resultsE != null && resultsE.length != null && resultsE.length > 0) {
+							console.log('eight');
+							multi = 1.8;
+							}
+							else {
+							multi = 0.1;
+							};
+							
+							projectedR = projectedR.reverse();
+							var GR = turf.distance(projectedR, projectedLastCo, {units: 'miles'})* multi;; // Calculates the g for this node
+							var thisGR = lastG + GR;
+							console.log('projectedEnd @ create = '+projectedEnd);
+							var thisF = thisGR + turf.distance(projectedR, projectedEnd, {units: 'miles'})*1.2; // Calculates the f for this node (A multiplier is applied to the heuristic here. This technically allows for sub-optimal paths but allows a significantly reduced load time)
+							neighbourList['neighbour' + nCounter] = {'coordinate': nodeR, 'gScore': thisGR, 'fScore': thisF, 'previous': [...previous.previous]}; //uniquely name this neighbour feature and add data									nList.push(neighbourList['neighbour' + nCounter]) // add node object to an array
+							neighbourList['neighbour' + nCounter].previous.push(projectedR);
+							nList.push(neighbourList['neighbour' + nCounter]) // add node object to an array
+							nCounter++; // increase naming convention by 1								
+						};			
+					};
+				};
+					
+				var minMath = []; // empty array for fscore
+					
+					
+				for(var i = 0; i < nList.length+1; i++){ //loop through array of neighbouring nodes
+					minMath.push(neighbourList['neighbour' +i].fScore); // make array of fscore
+						
+					if (searched.includes(neighbourList['neighbour' +i])) { 
+						minMath.splice(i,1,Infinity); // set the fscore of each searched node to infinity so that searched nodes are excluded from future selection
+					};
+				};
+						
+				var lowF = Math.min.apply(null, minMath); // calculate lowest fScore
+					
+				var currArrPos = (minMath.indexOf(lowF)) // position in fscore array of lowest f
+					
+				searchFor = neighbourList['neighbour' +currArrPos].coordinate; // matches lowest f score to its coordinate from neighbour object
+				searched.push(neighbourList['neighbour' +currArrPos]);
+				checkedCo.push(neighbourList['neighbour' +currArrPos].coordinate);
+					
+				previous = neighbourList['neighbour' +currArrPos]
+				console.log('absEnd @ finish = ' +absEnd);
+				if (searchFor === absEnd) {
+					console.log('FINISHED!!!');
+					console.log(neighbourList['neighbour' +currArrPos]);
+					routeLine = L.polyline(neighbourList['neighbour' +currArrPos].previous).addTo(map);
+					yesRoute = true
+					
+					
+					nCounter = 1; // counter for naming neighbour features
+					last = 'neighbour' + (nCounter -1); // names the node previous to the current node along the route
+					nList = []; // array of neighbouring nodes along route
+					searched = []; // nodes that have been checked
+					checkedCo = [];
+					neighbourList = {}; // empty object
+					previous = null;
+					document.getElementById("tempLoader").innerHTML = " ";
+
+				}
+				else {
+					console.log(neighbourList);
+					console.log(minMath);
+					console.log(searchFor);
+					console.log(checkedCo);
+					run();
+				};
+					
+					
+					
+				var t1 = performance.now();
+				console.log("search took " + (t1 - t0)/1000 + " seconds.") // performance test
+			};
+			
+			
+			// ALERT FOR WHEN ROUTING IS INITIATED
+			function runAlert() {
+				alert('Loading the route should take a few minutes. Please be aware that longer distances will take longer to calculate. Your browser may become unresponsive during this time but be assured that the route is being calculated. Close other tabs to improve performance. Click "OK" to continue')
+			};
+				
+		</script>
+	
+	</body>
+</html>
+		
