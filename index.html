@@ -21,6 +21,9 @@
 		<!-- Load manchester road node geojson -->
 		<script src = "manchester_nodes.geojson"></script>
 		
+		<!-- Load beeline -->
+		<script src = "Beeline.geojson"></script>
+
 		<!-- Load pollution pollygons -->
 		<script src = "80thPercentilePollution.geojson"></script>
 		<script src = "60thPercentilePollution.geojson"></script>
@@ -160,7 +163,8 @@
 			
 			<div id='introtext'>
 				Right click <img src="https://img.icons8.com/metro/10/000000/mouse-right-click.png"> on the map to add your starting position. Right click <img src="https://img.icons8.com/metro/10/000000/mouse-right-click.png"> again to add your destination. When finished with your selection <button onclick="firstNode(); runAlert(); run()">click here</button>  to calculate the route.
-									
+					
+				<p> <button onclick="addBee()">Click here</button> to toggle Manchester's Beeline Network</p>
 
 			</div>
 			
@@ -231,9 +235,35 @@
 			};
 				
 			var sixPer = new L.GeoJSON(six_PercentilePollution).addTo(map); // creates new polygon
-			sixPer.setStyle({fillColor: '#ff6600', color: 'white'}); // stye the polygon			
+			sixPer.setStyle({fillColor: '#ff6600', color: 'white'}); // stye the polygon	
+
+		console.log(beeLine.features[a].geometry.coordinates[0]);
 			
+			// Beeline
+			for(var a = 0; a < beeLine.features.length; a++){
+				for(var i = 0; i < beeLine.features[a].geometry.coordinates[0].length; i++){
+					beeLine.features[a].geometry.coordinates[0][i] = proj4(jsonCRS, 'EPSG:4326', beeLine.features[a].geometry.coordinates[0][i])//.reverse();
+				}
+			};
 			
+			console.log(beeLine);
+			
+			var beeProj;
+			var beeTog = true
+			
+			function addBee() {
+			
+				if (beeTog) {
+					beeProj = L.geoJSON(beeLine, {color:'#00cc00'}).addTo(map);
+					beeTog = false;			
+				}
+				else {
+					map.removeLayer(beeProj);
+					beeTog = true;
+					console.log('remove');
+				};
+				
+			};
 			
 			// MAKE ALL MANCHESTER NETWORK COORDINATES STRINGS FOR SEARCH
 			
